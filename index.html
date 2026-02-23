@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Cymatics Simulator</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a0f;color:#e0e0e0;font-family:-apple-system,system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;min-height:100vh;overflow:hidden}
+canvas{display:block;margin:6px auto;border-radius:50%}
+#controls{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;padding:10px 16px;max-width:650px}
+button{background:#2a2a3a;color:#e0e0e0;border:1px solid #444;padding:8px 18px;border-radius:6px;font-size:14px;cursor:pointer}
+button:hover{background:#3a3a4a}
+button.active{background:#4a6fa5;border-color:#6a8fc5}
+.sg{display:flex;flex-direction:column;align-items:center;font-size:11px}
+.sg input{width:100px}
+#pitch{display:flex;align-items:center;justify-content:center;gap:16px;padding:8px 16px;font-variant-numeric:tabular-nums}
+#noteName{font-size:56px;font-weight:800;min-width:100px;text-align:center;color:#e0e0e0;letter-spacing:-2px;transition:color 0.2s}
+#pitchRight{display:flex;flex-direction:column;gap:4px;align-items:flex-start}
+#cents{font-size:16px;font-weight:600;min-width:80px;transition:color 0.2s}
+#centsBar{width:180px;height:10px;background:#1a1a2a;border-radius:5px;position:relative;overflow:hidden;border:1px solid #2a2a3a}
+#centsIndicator{position:absolute;width:6px;height:100%;background:#4a9ed6;border-radius:3px;left:50%;transform:translateX(-50%);transition:left 0.15s ease-out}
+#centsCenter{position:absolute;width:2px;height:100%;background:#444;left:calc(50% - 1px)}
+#freqSmall{font-size:13px;color:#666}
+#info{display:flex;gap:20px;font-size:12px;color:#888;padding:2px}
+#info span{font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+<div id="info">
+  <span id="dMode">Mode --</span>
+  <span id="dCount">--</span>
+  <span id="dFps">-- fps</span>
+</div>
+<canvas id="C"></canvas>
+<div id="pitch">
+  <span id="noteName">--</span>
+  <div id="pitchRight">
+    <div id="centsBar"><div id="centsCenter"></div><div id="centsIndicator"></div></div>
+    <div id="cents">&nbsp;</div>
+    <span id="freqSmall">-- Hz</span>
+  </div>
+</div>
+<div id="controls">
+  <button id="btnStart">Start Mic</button>
+  <button id="btnReset">Reset</button>
+  <div class="sg"><label>Sensitivity</label><input type="range" id="slSens" min="0.5" max="5" step="0.1" value="2"></div>
+  <div class="sg"><label>Particles</label><input type="range" id="slCount" min="3000" max="30000" step="1000" value="15000"></div>
+</div>
+<script>
+(function(){
+"use strict";
+
+// ============ CONFIG ============
+var IS_MOBILE = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+var MAX_P = IS_MOBILE ? 8000 : 30000;
+var GRID = 64;
+
+// ============ PITCH DETECTION ============
+var NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+
+// Smoothing buffer: ~150ms retune speed (like Auto-Tune natural vocal mode)
+var freqHistory = [];
+var SMOOTH_FRAMES = 9; // ~150ms at 60fps
+var smoothedFreq = 0;
+var smoothedCents = 0;
+
+function freqToNote(freq){
+  if(freq < 20) return null;
+  var semitones = 12 * Math.log2(freq / 440);
+  var rounded = Math.round(semitones);
+  var cents = (semitones - rounded) * 100; // keep float for smoothing
+  var midi = rounded + 69;
+  if(midi < 0 || midi > 127) return null;
+  var name = NOTE_NAMES[((midi % 12) + 12) % 12];
+  var octave = Math.floor(midi / 12) - 1;
+  return {name: name, octave: octave, cents: cents, midi: midi};
+}
+
+function smoothPitch(freq){
+  // Median filter + exponential smoothing (like pro tuners)
+  freqHistory.push(freq);
+  if(freqHistory.length > SMOOTH_FRAMES) freqHistory.shift();
+
+  // Median of recent values (rejects outliers/octave jumps)
+  var sorted = freqHistory.slice().sort(function(a,b){return a-b;});
+  var median = sorted[sorted.length >> 1];
+
+  // Exponential smoothing toward median
+  var alpha = 0.25; // lower = smoother, 0.25 ≈ 150ms response
+  smoothedFreq += (median - smoothedFreq) * alpha;
+  return smoothedFreq;
+}
+
+// ============ STATE ============
+var audioCtx, analyser, freqData;
+var isRunning = false, isCalibrating = false;
+var dominantFreq = 0, amplitude = 0;
+var noiseFloor = null, noiseGateRMS = 0;
+var currentMode = {m:0, n:1, alpha:2.4048};
+var lastModeKey = '0,1';
+var currentLUT = null;
+var particles = [];
+var currentNote = null;
+
+// ============ CANVAS ============
+var canvas = document.getElementById('C');
+var ctx = canvas.getContext('2d');
+var W, R, CX, CY;
+
+function resize(){
+  W = Math.min(innerWidth - 20, innerHeight - 160, 560);
+  var dpr = devicePixelRatio || 1;
+  canvas.width = W * dpr;
+  canvas.height = W * dpr;
+  canvas.style.width = W + 'px';
+  canvas.style.height = W + 'px';
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  R = W/2 - 10;
+  CX = W/2;
+  CY = W/2;
+}
+resize();
+
+// ============ BESSEL ============
+function besselJ(n, x){
+  if(Math.abs(x)<1e-10) return n===0?1:0;
+  var s=0, hx=x/2;
+  for(var k=0;k<25;k++){
+    var sign=k%2===0?1:-1;
+    var num=Math.pow(hx,2*k+n);
+    var den=1;
+    for(var i=1;i<=k;i++) den*=i;
+    for(var i=1;i<=k+n;i++) den*=i;
+    s+=sign*num/den;
+    if(Math.abs(num/den)<1e-15) break;
+  }
+  return s;
+}
+
+var ZEROS=[
+  [2.4048,5.5201,8.6537,11.7915],
+  [3.8317,7.0156,10.1735,13.3237],
+  [5.1356,8.4172,11.6198,14.7960],
+  [6.3802,9.7610,13.0152,16.2235],
+  [7.5883,11.0647,14.3725,17.6160],
+  [8.7715,12.3386,15.7002,18.9801],
+  [9.9361,13.5893,17.0038,20.3208]
+];
+
+var MODES=[];
+for(var m=0;m<=6;m++) for(var n=0;n<4;n++) MODES.push({m:m,n:n+1,alpha:ZEROS[m][n]});
+MODES.sort(function(a,b){return a.alpha-b.alpha});
+
+function Z2(m,alpha,r,th){
+  var j=besselJ(m,alpha*r);
+  var a=m===0?1:Math.cos(m*th);
+  return j*a*j*a;
+}
+
+// ============ GRADIENT LUT ============
+function makeLUT(m,n,alpha){
+  var lut=new Float32Array(GRID*GRID*2);
+  var eps=2/GRID;
+  for(var iy=0;iy<GRID;iy++) for(var ix=0;ix<GRID;ix++){
+    var px=ix/(GRID-1)*2-1, py=iy/(GRID-1)*2-1;
+    var rr=Math.sqrt(px*px+py*py);
+    var base=(iy*GRID+ix)*2;
+    if(rr>0.95){lut[base]=px/rr*0.5;lut[base+1]=py/rr*0.5;continue;}
+    if(rr<0.001) continue;
+    var xp=Math.min(1,Math.sqrt((px+eps)*(px+eps)+py*py));
+    var xm=Math.min(1,Math.sqrt((px-eps)*(px-eps)+py*py));
+    var yp=Math.min(1,Math.sqrt(px*px+(py+eps)*(py+eps)));
+    var ym=Math.min(1,Math.sqrt(px*px+(py-eps)*(py-eps)));
+    lut[base]  =(Z2(m,alpha,xp,Math.atan2(py,px+eps))-Z2(m,alpha,xm,Math.atan2(py,px-eps)))/(2*eps);
+    lut[base+1]=(Z2(m,alpha,yp,Math.atan2(py+eps,px))-Z2(m,alpha,ym,Math.atan2(py-eps,px)))/(2*eps);
+  }
+  var mx=0;
+  for(var i=0;i<GRID*GRID;i++){var g=lut[i*2],h=lut[i*2+1];var mg=Math.sqrt(g*g+h*h);if(mg>mx)mx=mg;}
+  if(mx>0) for(var i=0;i<GRID*GRID*2;i++) lut[i]/=mx;
+  return lut;
+}
+
+function sampleLUT(lut,px,py){
+  var fx=(px+1)/2*(GRID-1), fy=(py+1)/2*(GRID-1);
+  var ix=Math.max(0,Math.min(GRID-2,fx|0)), iy=Math.max(0,Math.min(GRID-2,fy|0));
+  var tx=fx-ix, ty=fy-iy;
+  var a=(iy*GRID+ix)*2, b=a+2, c=((iy+1)*GRID+ix)*2, d=c+2;
+  return [
+    (1-ty)*((1-tx)*lut[a]+tx*lut[b])+ty*((1-tx)*lut[c]+tx*lut[d]),
+    (1-ty)*((1-tx)*lut[a+1]+tx*lut[b+1])+ty*((1-tx)*lut[c+1]+tx*lut[d+1])
+  ];
+}
+
+currentLUT = makeLUT(0,1,ZEROS[0][0]);
+
+// ============ PARTICLES ============
+function initParticles(count){
+  particles=[];
+  for(var i=0;i<count;i++){
+    var a=Math.random()*Math.PI*2, r=Math.sqrt(Math.random())*0.95;
+    particles.push({x:r*Math.cos(a),y:r*Math.sin(a),vx:0,vy:0,c:Math.random()<0.5?0:1});
+  }
+}
+initParticles(15000);
+
+// ============ AUDIO ============
+async function startAudio(){
+  audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+  var stream=await navigator.mediaDevices.getUserMedia({audio:true});
+  var src=audioCtx.createMediaStreamSource(stream);
+  var hp=audioCtx.createBiquadFilter();
+  hp.type='highpass'; hp.frequency.value=80; hp.Q.value=0.7;
+  analyser=audioCtx.createAnalyser();
+  analyser.fftSize=2048; analyser.smoothingTimeConstant=0.8;
+  src.connect(hp); hp.connect(analyser);
+  freqData=new Uint8Array(analyser.frequencyBinCount);
+}
+
+async function calibrate(){
+  isCalibrating=true;
+  var btn=document.getElementById('btnStart');
+  btn.textContent='Be silent...'; btn.style.background='#8a4a00';
+  var bins=analyser.frequencyBinCount;
+  var acc=new Float32Array(bins), pk=new Float32Array(bins), frames=0;
+  var t0=performance.now();
+  await new Promise(function(done){
+    (function tick(){
+      analyser.getByteFrequencyData(freqData);
+      for(var i=0;i<bins;i++){acc[i]+=freqData[i];if(freqData[i]>pk[i])pk[i]=freqData[i];}
+      frames++;
+      if(performance.now()-t0<2500) requestAnimationFrame(tick); else done();
+    })();
+  });
+  noiseFloor=new Float32Array(bins);
+  var ny=audioCtx.sampleRate/2, bHz=ny/bins;
+  var lo=Math.floor(60/bHz), hi=Math.min(Math.floor(3000/bHz),bins-1);
+  var tot=0,cnt=0;
+  for(var i=0;i<bins;i++){var avg=acc[i]/frames;noiseFloor[i]=Math.max(avg*1.5,avg+(pk[i]-avg)*0.6);}
+  for(var i=lo;i<=hi;i++){tot+=noiseFloor[i]*noiseFloor[i];cnt++;}
+  noiseGateRMS=Math.sqrt(tot/(cnt||1));
+  isCalibrating=false;
+  btn.textContent='Stop'; btn.style.background=''; btn.classList.add('active');
+}
+
+function readAudio(){
+  if(!analyser||isCalibrating) return;
+  analyser.getByteFrequencyData(freqData);
+  var sens=parseFloat(document.getElementById('slSens').value);
+  var ny=audioCtx.sampleRate/2, bHz=ny/analyser.frequencyBinCount;
+  var lo=Math.floor(60/bHz), hi=Math.min(Math.floor(3000/bHz),freqData.length-1);
+  var mxV=0,mxB=0;
+  for(var i=lo;i<=hi;i++){
+    var c=noiseFloor?Math.max(0,freqData[i]-noiseFloor[i]):freqData[i];
+    if(c>mxV){mxV=c;mxB=i;}
+  }
+  if(mxB>lo&&mxB<hi&&mxV>5){
+    var a=Math.max(0,freqData[mxB-1]-(noiseFloor?noiseFloor[mxB-1]:0));
+    var b=mxV;
+    var c=Math.max(0,freqData[mxB+1]-(noiseFloor?noiseFloor[mxB+1]:0));
+    var den=2*(a-2*b+c);
+    dominantFreq=(mxB+(den?((a-c)/den):0))*bHz;
+  } else dominantFreq=mxB*bHz;
+  var sum=0,cnt=0,hot=0;
+  for(var i=lo;i<=hi;i++){
+    var c=noiseFloor?Math.max(0,freqData[i]-noiseFloor[i]):freqData[i];
+    sum+=c*c; cnt++;
+    if(noiseFloor&&freqData[i]>noiseFloor[i]*1.8) hot++;
+  }
+  var rms=Math.sqrt(sum/(cnt||1));
+  var gate=noiseFloor?noiseGateRMS*1.2:20;
+  amplitude=(rms<gate||mxV<20||hot<3)?0:rms/255*sens;
+
+  // Pitch detection with smoothing
+  if(amplitude>0 && dominantFreq>60){
+    var sf = smoothPitch(dominantFreq);
+    currentNote = freqToNote(sf);
+    // Smooth the cents separately for display
+    if(currentNote) smoothedCents += (currentNote.cents - smoothedCents) * 0.2;
+  } else {
+    currentNote = null;
+    freqHistory = [];
+    smoothedCents = 0;
+  }
+}
+
+// ============ MODE MAPPING ============
+function updateMode(){
+  if(amplitude<0.05) return;
+  var f=dominantFreq;
+  var t=f<80?0:Math.min(1,(f-80)/(2000-80));
+  var idx=Math.min(MODES.length-1,t*MODES.length|0);
+  var mode=MODES[idx];
+  var key=mode.m+','+mode.n;
+  if(key!==lastModeKey){
+    lastModeKey=key;
+    currentMode=mode;
+    currentLUT=makeLUT(mode.m,mode.n,mode.alpha);
+  }
+}
+
+// ============ SAND PHYSICS ============
+function stepSand(dt){
+  var fs=Math.min(amplitude,1)*0.15;
+  var fric=Math.pow(0.05,dt);
+  var noise=amplitude>0.05?0.001*amplitude:0.0001;
+  for(var i=0;i<particles.length;i++){
+    var p=particles[i];
+    if(fs>0.001){var g=sampleLUT(currentLUT,p.x,p.y);p.vx-=g[0]*fs;p.vy-=g[1]*fs;}
+    p.vx+=(Math.random()-0.5)*noise;
+    p.vy+=(Math.random()-0.5)*noise;
+    var sp=Math.sqrt(p.vx*p.vx+p.vy*p.vy);
+    if(sp>0.02){p.vx=p.vx/sp*0.02;p.vy=p.vy/sp*0.02;}
+    p.vx*=fric; p.vy*=fric;
+    p.x+=p.vx*dt*60; p.y+=p.vy*dt*60;
+    var r=Math.sqrt(p.x*p.x+p.y*p.y);
+    if(r>0.92){
+      var pb=(r-0.92)/0.08;
+      p.vx+=-p.x/r*pb*0.01; p.vy+=-p.y/r*pb*0.01;
+      if(r>0.97){
+        p.x=p.x/r*0.97; p.y=p.y/r*0.97;
+        var dot=p.vx*p.x/r+p.vy*p.y/r;
+        if(dot>0){p.vx-=2*dot*p.x/r;p.vy-=2*dot*p.y/r;}
+        p.vx*=0.5;p.vy*=0.5;
+      }
+    }
+  }
+}
+
+// ============ RENDER ============
+function draw(){
+  ctx.clearRect(0,0,W,W);
+
+  // Plate
+  ctx.beginPath(); ctx.arc(CX,CY,R+2,0,Math.PI*2);
+  ctx.fillStyle='#1a1a24'; ctx.fill();
+  ctx.strokeStyle='#333'; ctx.lineWidth=2; ctx.stroke();
+
+  // Particles
+  ctx.globalAlpha=0.9;
+  for(var i=0;i<particles.length;i++){
+    var p=particles[i];
+    ctx.fillStyle=p.c?'#4a9ed6':'#e8863a';
+    ctx.fillRect(CX+p.x*R-1, CY+p.y*R-1, 2.5, 2.5);
+  }
+  ctx.globalAlpha=1;
+}
+
+// ============ PITCH UI ============
+function updatePitchUI(){
+  var nameEl=document.getElementById('noteName');
+  var centsEl=document.getElementById('cents');
+  var barEl=document.getElementById('centsIndicator');
+  var freqEl=document.getElementById('freqSmall');
+
+  if(!isRunning || !currentNote){
+    nameEl.textContent='--';
+    nameEl.style.color='#e0e0e0';
+    centsEl.innerHTML='&nbsp;';
+    barEl.style.left='50%';
+    barEl.style.background='#4a9ed6';
+    freqEl.textContent=isRunning?Math.round(dominantFreq)+' Hz':'-- Hz';
+    return;
+  }
+
+  var n=currentNote;
+  nameEl.textContent=n.name+n.octave;
+  freqEl.textContent=Math.round(smoothedFreq)+' Hz';
+
+  // Use smoothed cents for display (Auto-Tune style thresholds)
+  var sc=smoothedCents;
+  var ac=Math.abs(sc);
+  var label=Math.round(sc);
+  var prefix=label>0?'+':'';
+
+  // Auto-Tune Pro thresholds: <10 = in tune, 10-25 = close, >25 = off
+  if(ac<10){
+    centsEl.textContent='In tune';
+    centsEl.style.color='#5cb85c';
+    nameEl.style.color='#5cb85c';
+  } else if(ac<25){
+    centsEl.textContent=prefix+label+' cents';
+    centsEl.style.color='#e8c33a';
+    nameEl.style.color='#e8c33a';
+  } else {
+    centsEl.textContent=prefix+label+' cents';
+    centsEl.style.color='#d9534f';
+    nameEl.style.color='#d9534f';
+  }
+
+  // Cents bar: -50 to +50 mapped to 0% - 100%, smoothed
+  var pct=50+Math.max(-50,Math.min(50,sc));
+  barEl.style.left=pct+'%';
+  barEl.style.background=ac<10?'#5cb85c':ac<25?'#e8c33a':'#d9534f';
+}
+
+// ============ MAIN LOOP ============
+var lastT=0, fc=0, ft=0, fps=0;
+
+function loop(t){
+  requestAnimationFrame(loop);
+  var dt=Math.min(0.033,(t-lastT)/1000); lastT=t;
+  fc++; ft+=dt;
+  if(ft>=1){fps=Math.round(fc/ft);fc=0;ft=0;}
+
+  if(isRunning){readAudio();updateMode();}
+  stepSand(dt);
+  draw();
+  updatePitchUI();
+
+  document.getElementById('dMode').textContent='Mode ('+currentMode.m+','+currentMode.n+')';
+  document.getElementById('dCount').textContent=particles.length+' particles';
+  document.getElementById('dFps').textContent=fps+' fps';
+}
+requestAnimationFrame(loop);
+
+// ============ UI ============
+document.getElementById('btnStart').onclick=async function(){
+  if(!isRunning&&!isCalibrating){
+    try{await startAudio();await calibrate();isRunning=true;}
+    catch(e){alert('Mic: '+e.message);}
+  } else if(isRunning){
+    isRunning=false;amplitude=0;noiseFloor=null;currentNote=null;
+    this.textContent='Start Mic';this.classList.remove('active');
+  }
+};
+
+document.getElementById('btnReset').onclick=function(){
+  initParticles(Math.min(parseInt(document.getElementById('slCount').value),MAX_P));
+};
+
+document.getElementById('slCount').oninput=function(){
+  initParticles(Math.min(parseInt(this.value),MAX_P));
+};
+
+window.onresize=resize;
+
+})();
+</script>
+</body>
+</html>
