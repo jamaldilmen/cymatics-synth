@@ -102,6 +102,21 @@ var dominantFreq = 0, amplitude = 0;
 var inputMode = 'voice'; // 'voice' or 'music'
 var envelope = 0; // Resolume-style: rises instant, falls at controlled rate
 var FALL_RATE = 0.92; // per frame: 0.9 = fast fall, 0.95 = slow fall, 0.92 = natural
+
+// Music mode: multi-band + dual envelope for Trap Nation style reactivity
+var energyEnv = 0;   // slow breathing envelope (section energy)
+var peakEnv = 0;     // fast transient envelope (hits/snares)
+var ENERGY_FALL = 0.985; // very slow fall — breathing feel (~2s to half)
+var PEAK_FALL = 0.92;    // fast fall — snappy transients
+// Auto-gain: adapts over seconds, not frames (preserves dynamics within sections)
+var autoGainRMS = 0;     // running average of input RMS (~3-5 second window)
+var autoGain = 1.0;
+// Spectral centroid for smooth mode mapping in music
+var smoothCentroid = 500; // Hz, smoothed over time
+// Mode hysteresis: need sustained shift before switching
+var pendingMode = null;
+var pendingModeFrames = 0;
+var MODE_HYSTERESIS = 15; // frames of consistent new mode before switching (~250ms)
 var noiseFloor = null, noiseGateRMS = 0;
 var currentMode = {m:1, n:1, alpha:3.8317}; // start with (1,1) not (0,1)
 var lastModeKey = '1,1';
@@ -254,7 +269,7 @@ async function startAudio(){
   var hp=audioCtx.createBiquadFilter();
   hp.type='highpass'; hp.frequency.value=80; hp.Q.value=0.7;
   gainNode=audioCtx.createGain();
-  gainNode.gain.value=inputMode==='music'?0.07:1.0;
+  gainNode.gain.value=inputMode==='music'?0.25:1.0;
   analyser=audioCtx.createAnalyser();
   analyser.fftSize=2048;
   analyser.smoothingTimeConstant=0.6; // less browser smoothing, we do our own
@@ -316,24 +331,84 @@ function readAudio(){
   }
   var rms=Math.sqrt(sum/(cnt||1));
 
-  // Gate: voice uses calibrated noise floor, music uses simple threshold
-  var gated;
+  // Gate: voice uses calibrated noise floor, music uses multi-band + dual envelope
   if(inputMode==='voice'){
     var gate=noiseFloor?noiseGateRMS*1.2:20;
-    gated=(rms<gate||mxV<20||hot<3)?0:rms/255*sens;
+    var gated=(rms<gate||mxV<20||hot<3)?0:rms/255*sens;
+    // Frequency-dependent fall rate: high freq = faster fall
+    var freqRatio=Math.max(0,Math.min(1,(dominantFreq-80)/(2000-80)));
+    var dynFall=0.95-(0.95-0.88)*freqRatio; // low=0.95 slow, high=0.88 fast
+    // Voice: single envelope (Resolume style)
+    if(gated>envelope){ envelope=gated; } else { envelope*=dynFall; }
+    if(envelope<0.001) envelope=0;
+    amplitude=envelope;
   } else {
-    gated=mxV>3?rms/255*sens:0;
-  }
+    // === MUSIC MODE: Multi-band + dual envelope (Trap Nation style) ===
+    var bins=analyser.frequencyBinCount;
+    var bHz=ny/bins;
 
-  // Resolume-style envelope: instant rise, controlled fall
-  if(gated>envelope){
-    envelope=gated; // instant attack
-  } else {
-    envelope*=FALL_RATE; // smooth decay
+    // Band boundaries
+    var bassLo=Math.floor(30/bHz), bassHi=Math.floor(200/bHz);
+    var midLo=Math.floor(200/bHz), midHi=Math.floor(2000/bHz);
+    var hiLo=Math.floor(2000/bHz), hiHi=Math.min(Math.floor(8000/bHz),bins-1);
+
+    // Compute per-band RMS
+    var bassSum=0,bassCnt=0, midSum=0,midCnt=0, hiSum=0,hiCnt=0;
+    var centNum=0, centDen=0; // for spectral centroid
+    for(var i=bassLo;i<=hiHi;i++){
+      var v=freqData[i];
+      var freq_i=i*bHz;
+      if(i<=bassHi){ bassSum+=v*v; bassCnt++; }
+      else if(i<=midHi){ midSum+=v*v; midCnt++; }
+      else { hiSum+=v*v; hiCnt++; }
+      // Spectral centroid (energy-weighted average frequency)
+      centNum+=v*v*freq_i;
+      centDen+=v*v;
+    }
+    var bassRMS=Math.sqrt(bassSum/(bassCnt||1));
+    var midRMS=Math.sqrt(midSum/(midCnt||1));
+    var hiRMS=Math.sqrt(hiSum/(hiCnt||1));
+
+    // Weighted energy: bass-heavy (kicks/808s drive the visual)
+    var bandEnergy = bassRMS*0.55 + midRMS*0.30 + hiRMS*0.15;
+
+    // Auto-gain: slow adaptation (~3-5 second window)
+    // Track running average of energy, adapt gain to normalize it
+    autoGainRMS += (bandEnergy - autoGainRMS) * 0.008; // ~3s time constant at 60fps
+    if(autoGainRMS > 3){
+      var target = 80 / autoGainRMS; // target normalized energy ~80
+      autoGain += (Math.max(0.05, Math.min(6.0, target)) - autoGain) * 0.01;
+    }
+
+    var scaled = bandEnergy * autoGain / 255 * sens;
+    var gated = bandEnergy > 2 ? scaled : 0;
+
+    // Frequency-dependent envelope speeds (spectral centroid drives it)
+    var freqRatio=Math.max(0,Math.min(1,(smoothCentroid-80)/(2000-80)));
+    var dynEnergyFall=0.99-(0.99-0.975)*freqRatio;   // low=0.99 slow breathing, high=0.975 tighter
+    var dynPeakFall=0.94-(0.94-0.88)*freqRatio;       // low=0.94 lingering, high=0.88 snappy
+    var dynAttackAlpha=0.08+(0.25-0.08)*freqRatio;     // low=0.08 soft, high=0.25 sharp
+
+    // DUAL ENVELOPE:
+    // 1) Energy envelope — slow, breathing, follows section energy
+    if(gated > energyEnv){ energyEnv += (gated - energyEnv) * dynAttackAlpha; }
+    else { energyEnv *= dynEnergyFall; }
+    if(energyEnv < 0.001) energyEnv = 0;
+
+    // 2) Peak envelope — fast, punchy, catches transients (snares, kicks)
+    if(gated > peakEnv){ peakEnv = gated; } // instant attack
+    else { peakEnv *= dynPeakFall; }
+    if(peakEnv < 0.001) peakEnv = 0;
+
+    // Blend: 60% breathing energy + 40% transient punch
+    amplitude = energyEnv * 0.6 + peakEnv * 0.4;
+
+    // Spectral centroid for mode mapping (smooth it heavily)
+    if(centDen > 0){
+      var rawCentroid = centNum / centDen;
+      smoothCentroid += (rawCentroid - smoothCentroid) * 0.03; // very smooth transition
+    }
   }
-  // Kill tiny residual
-  if(envelope<0.001) envelope=0;
-  amplitude=envelope;
 
   // Pitch detection with smoothing
   if(amplitude>0 && dominantFreq>60){
@@ -351,15 +426,39 @@ function readAudio(){
 // ============ MODE MAPPING ============
 function updateMode(){
   if(amplitude<0.05) return;
-  var f=dominantFreq;
+
+  // Voice: use dominant frequency. Music: use spectral centroid (much smoother)
+  var f = inputMode==='music' ? smoothCentroid : dominantFreq;
   var t=f<80?0:Math.min(1,(f-80)/(2000-80));
   var idx=Math.min(MODES.length-1,t*MODES.length|0);
   var mode=MODES[idx];
   var key=mode.m+','+mode.n;
+
   if(key!==lastModeKey){
-    lastModeKey=key;
-    currentMode=mode;
-    currentLUT=makeLUT(mode.m,mode.n,mode.alpha);
+    if(inputMode==='music'){
+      // Hysteresis: need sustained new mode before switching (prevents jitter)
+      if(key===pendingMode){
+        pendingModeFrames++;
+        if(pendingModeFrames >= MODE_HYSTERESIS){
+          lastModeKey=key;
+          currentMode=mode;
+          currentLUT=makeLUT(mode.m,mode.n,mode.alpha);
+          pendingMode=null;
+          pendingModeFrames=0;
+        }
+      } else {
+        pendingMode=key;
+        pendingModeFrames=1;
+      }
+    } else {
+      // Voice: switch immediately
+      lastModeKey=key;
+      currentMode=mode;
+      currentLUT=makeLUT(mode.m,mode.n,mode.alpha);
+    }
+  } else {
+    pendingMode=null;
+    pendingModeFrames=0;
   }
 }
 
@@ -377,6 +476,7 @@ function logSession(){
     '[CYMATICS] mode=('+currentMode.m+','+currentMode.n+') '+
     'amp='+avgAmp+' avgR='+avgRad+' edge%='+edgePct+'% '+
     'input='+inputMode+' freq='+Math.round(dominantFreq)+'Hz '+
+    (inputMode==='music'?'centroid='+Math.round(smoothCentroid)+'Hz gain='+autoGain.toFixed(2)+' energy='+energyEnv.toFixed(3)+' peak='+peakEnv.toFixed(3)+' ':'')+
     'particles='+particles.length
   );
   logAmpSum=0; logRadSum=0; logEdgeCount=0; logSamples=0;
@@ -524,7 +624,7 @@ document.getElementById('btnStart').onclick=async function(){
       isRunning=true;
     }catch(e){alert('Mic: '+e.message);}
   } else if(isRunning){
-    isRunning=false;amplitude=0;noiseFloor=null;currentNote=null;
+    isRunning=false;amplitude=0;envelope=0;energyEnv=0;peakEnv=0;noiseFloor=null;currentNote=null;
     this.textContent='Start';this.classList.remove('active');
   }
 };
@@ -534,13 +634,15 @@ document.getElementById('btnMode').onclick=function(){
     inputMode='music';
     this.textContent='Music';
     this.classList.add('active');
+    // Reset music state so it recalibrates to new input
+    autoGain=1.0; autoGainRMS=0; energyEnv=0; peakEnv=0;
+    smoothCentroid=500; pendingMode=null; pendingModeFrames=0;
   } else {
     inputMode='voice';
     this.textContent='Voice';
     this.classList.remove('active');
   }
-  // Update gain if already running
-  if(gainNode) gainNode.gain.value=inputMode==='music'?0.07:1.0;
+  if(gainNode) gainNode.gain.value=inputMode==='music'?0.25:1.0;
 };
 
 document.getElementById('btnReset').onclick=function(){

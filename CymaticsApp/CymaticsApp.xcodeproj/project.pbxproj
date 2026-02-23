@@ -1,0 +1,367 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0D6D56E9CD4A8757CDE397AE /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F86BD96378B55407D34367B /* ContentView.swift */; };
+		21CDFF46E3D1864E9244EA8E /* ParticleSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18D0F619490F1BDA712CEC69 /* ParticleSystem.swift */; };
+		2AEB876BD57B6ED955F95286 /* CymaticsMetalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC230F845E4ECC18C0FA266C /* CymaticsMetalView.swift */; };
+		368081CFF0D8267A3E0BE015 /* CymaticsApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A79F066BA78EB26F600383D /* CymaticsApp.swift */; };
+		71ACFDDE2BA69AC1879EADEA /* FrequencyAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36180D221F0702018180947F /* FrequencyAnalyzer.swift */; };
+		85DA74513D628CE2C955056E /* BesselFunction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5632ED54148DB6A6BF5A6FF9 /* BesselFunction.swift */; };
+		981251ADA2AC14E4FF050E78 /* AudioEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7202DD4788CCB9CCFC31F19D /* AudioEngine.swift */; };
+		D7D1D54BFA675B4C8DAAF9C1 /* MetalRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9119181956E9C6EA7F0B07B9 /* MetalRenderer.swift */; };
+		DA5B7A5970EB6040E5BB8849 /* ChladniField.swift in Sources */ = {isa = PBXBuildFile; fileRef = F95B2371A7EE402C6C6E22C3 /* ChladniField.swift */; };
+		EB8A335164C1204A561B75E3 /* Shaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = D53B1EDCE774AC337EDFA50E /* Shaders.metal */; };
+		F814487AA6D37623E6BE7A8B /* ControlsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD5A42AB9C038F234A9C113C /* ControlsView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		15C60AF971C0D3D5D8D25810 /* CymaticsApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CymaticsApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		18D0F619490F1BDA712CEC69 /* ParticleSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParticleSystem.swift; sourceTree = "<group>"; };
+		1F86BD96378B55407D34367B /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		36180D221F0702018180947F /* FrequencyAnalyzer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrequencyAnalyzer.swift; sourceTree = "<group>"; };
+		3A79F066BA78EB26F600383D /* CymaticsApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CymaticsApp.swift; sourceTree = "<group>"; };
+		5632ED54148DB6A6BF5A6FF9 /* BesselFunction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BesselFunction.swift; sourceTree = "<group>"; };
+		7202DD4788CCB9CCFC31F19D /* AudioEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioEngine.swift; sourceTree = "<group>"; };
+		9119181956E9C6EA7F0B07B9 /* MetalRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalRenderer.swift; sourceTree = "<group>"; };
+		BC230F845E4ECC18C0FA266C /* CymaticsMetalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CymaticsMetalView.swift; sourceTree = "<group>"; };
+		BD5A42AB9C038F234A9C113C /* ControlsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlsView.swift; sourceTree = "<group>"; };
+		D53B1EDCE774AC337EDFA50E /* Shaders.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = Shaders.metal; sourceTree = "<group>"; };
+		D783F907BB1FC8BA094AD2AB /* CymaticsApp.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CymaticsApp.entitlements; sourceTree = "<group>"; };
+		D896F8CC2B6246FB097AF4B9 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		F95B2371A7EE402C6C6E22C3 /* ChladniField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChladniField.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		08CF7C8BE9DF18DEC8ABF313 /* Physics */ = {
+			isa = PBXGroup;
+			children = (
+				5632ED54148DB6A6BF5A6FF9 /* BesselFunction.swift */,
+				F95B2371A7EE402C6C6E22C3 /* ChladniField.swift */,
+				18D0F619490F1BDA712CEC69 /* ParticleSystem.swift */,
+			);
+			path = Physics;
+			sourceTree = "<group>";
+		};
+		13A04BCBEA9B46F0CF78176E = {
+			isa = PBXGroup;
+			children = (
+				62F5323A33F5811CFCCF5ECB /* CymaticsApp */,
+				EAA67E614860864670B51AE3 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		43B4579509BF2698BC6C255A /* Rendering */ = {
+			isa = PBXGroup;
+			children = (
+				9119181956E9C6EA7F0B07B9 /* MetalRenderer.swift */,
+				D53B1EDCE774AC337EDFA50E /* Shaders.metal */,
+			);
+			path = Rendering;
+			sourceTree = "<group>";
+		};
+		5E612961F018047B67C1879F /* Audio */ = {
+			isa = PBXGroup;
+			children = (
+				7202DD4788CCB9CCFC31F19D /* AudioEngine.swift */,
+				36180D221F0702018180947F /* FrequencyAnalyzer.swift */,
+			);
+			path = Audio;
+			sourceTree = "<group>";
+		};
+		62F5323A33F5811CFCCF5ECB /* CymaticsApp */ = {
+			isa = PBXGroup;
+			children = (
+				D783F907BB1FC8BA094AD2AB /* CymaticsApp.entitlements */,
+				3A79F066BA78EB26F600383D /* CymaticsApp.swift */,
+				D896F8CC2B6246FB097AF4B9 /* Info.plist */,
+				5E612961F018047B67C1879F /* Audio */,
+				08CF7C8BE9DF18DEC8ABF313 /* Physics */,
+				43B4579509BF2698BC6C255A /* Rendering */,
+				E63BE9B1055A1629B95129EF /* Views */,
+			);
+			path = CymaticsApp;
+			sourceTree = "<group>";
+		};
+		E63BE9B1055A1629B95129EF /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				1F86BD96378B55407D34367B /* ContentView.swift */,
+				BD5A42AB9C038F234A9C113C /* ControlsView.swift */,
+				BC230F845E4ECC18C0FA266C /* CymaticsMetalView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		EAA67E614860864670B51AE3 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				15C60AF971C0D3D5D8D25810 /* CymaticsApp.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		E12183ED511A68C04F3E81BC /* CymaticsApp */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1F17660C63A5809EEBCCC271 /* Build configuration list for PBXNativeTarget "CymaticsApp" */;
+			buildPhases = (
+				84D02FC698B0E9883FD82D66 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = CymaticsApp;
+			packageProductDependencies = (
+			);
+			productName = CymaticsApp;
+			productReference = 15C60AF971C0D3D5D8D25810 /* CymaticsApp.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		97D3CAC4C1A214C291769669 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					E12183ED511A68C04F3E81BC = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 52021F60AFEAE942E81400AD /* Build configuration list for PBXProject "CymaticsApp" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 13A04BCBEA9B46F0CF78176E;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				E12183ED511A68C04F3E81BC /* CymaticsApp */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		84D02FC698B0E9883FD82D66 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				981251ADA2AC14E4FF050E78 /* AudioEngine.swift in Sources */,
+				85DA74513D628CE2C955056E /* BesselFunction.swift in Sources */,
+				DA5B7A5970EB6040E5BB8849 /* ChladniField.swift in Sources */,
+				0D6D56E9CD4A8757CDE397AE /* ContentView.swift in Sources */,
+				F814487AA6D37623E6BE7A8B /* ControlsView.swift in Sources */,
+				368081CFF0D8267A3E0BE015 /* CymaticsApp.swift in Sources */,
+				2AEB876BD57B6ED955F95286 /* CymaticsMetalView.swift in Sources */,
+				71ACFDDE2BA69AC1879EADEA /* FrequencyAnalyzer.swift in Sources */,
+				D7D1D54BFA675B4C8DAAF9C1 /* MetalRenderer.swift in Sources */,
+				21CDFF46E3D1864E9244EA8E /* ParticleSystem.swift in Sources */,
+				EB8A335164C1204A561B75E3 /* Shaders.metal in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		3CBA858F26A17ABFBC1F100D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = CymaticsApp/CymaticsApp.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = CymaticsApp/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.purple.cymatics;
+				PRODUCT_NAME = Cymatics;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.9;
+			};
+			name = Release;
+		};
+		E8CCECDF50FDE50939EDE6E4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = CymaticsApp/CymaticsApp.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = CymaticsApp/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.purple.cymatics;
+				PRODUCT_NAME = Cymatics;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.9;
+			};
+			name = Debug;
+		};
+		FA6B59C20296382A7C3B15F7 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		FE22BB9093FCDE229339CFDE /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		1F17660C63A5809EEBCCC271 /* Build configuration list for PBXNativeTarget "CymaticsApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E8CCECDF50FDE50939EDE6E4 /* Debug */,
+				3CBA858F26A17ABFBC1F100D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		52021F60AFEAE942E81400AD /* Build configuration list for PBXProject "CymaticsApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FE22BB9093FCDE229339CFDE /* Debug */,
+				FA6B59C20296382A7C3B15F7 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 97D3CAC4C1A214C291769669 /* Project object */;
+}

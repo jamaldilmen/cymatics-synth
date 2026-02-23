@@ -1,0 +1,28 @@
+name: CymaticsApp
+options:
+  bundleIdPrefix: com.purple.cymatics
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "16.0"
+  minimumXcodeGenVersion: "2.30"
+
+targets:
+  CymaticsApp:
+    type: application
+    platform: macOS
+    sources:
+      - CymaticsApp
+    info:
+      path: CymaticsApp/Info.plist
+      properties:
+        NSMicrophoneUsageDescription: "Cymatics needs microphone access to visualize sound as vibration patterns on a virtual Chladni plate."
+    entitlements:
+      path: CymaticsApp/CymaticsApp.entitlements
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.purple.cymatics
+        CODE_SIGN_ENTITLEMENTS: CymaticsApp/CymaticsApp.entitlements
+        SWIFT_VERSION: "5.9"
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        CODE_SIGN_STYLE: Automatic
+        PRODUCT_NAME: Cymatics
