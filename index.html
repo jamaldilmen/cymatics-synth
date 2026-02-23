@@ -9,7 +9,8 @@
 body{background:#0a0a0f;color:#e0e0e0;font-family:-apple-system,system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;min-height:100vh;overflow:hidden}
 canvas{display:block;margin:6px auto;border-radius:50%}
 #controls{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;padding:10px 16px;max-width:650px}
-button{background:#2a2a3a;color:#e0e0e0;border:1px solid #444;padding:8px 18px;border-radius:6px;font-size:14px;cursor:pointer}
+button,select{background:#2a2a3a;color:#e0e0e0;border:1px solid #444;padding:8px 18px;border-radius:6px;font-size:14px;cursor:pointer}
+select{max-width:180px;text-overflow:ellipsis}
 button:hover{background:#3a3a4a}
 button.active{background:#4a6fa5;border-color:#6a8fc5}
 .sg{display:flex;flex-direction:column;align-items:center;font-size:11px}
@@ -42,7 +43,9 @@ button.active{background:#4a6fa5;border-color:#6a8fc5}
   </div>
 </div>
 <div id="controls">
-  <button id="btnStart">Start Mic</button>
+  <select id="inputDevice"><option value="">Default mic</option></select>
+  <button id="btnStart">Start</button>
+  <button id="btnMode">Voice</button>
   <button id="btnReset">Reset</button>
   <div class="sg"><label>Sensitivity</label><input type="range" id="slSens" min="0.5" max="5" step="0.1" value="2"></div>
   <div class="sg"><label>Particles</label><input type="range" id="slCount" min="3000" max="30000" step="1000" value="15000"></div>
@@ -54,7 +57,7 @@ button.active{background:#4a6fa5;border-color:#6a8fc5}
 // ============ CONFIG ============
 var IS_MOBILE = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 var MAX_P = IS_MOBILE ? 8000 : 30000;
-var GRID = 64;
+var GRID = 128;
 
 // ============ PITCH DETECTION ============
 var NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
@@ -93,12 +96,15 @@ function smoothPitch(freq){
 }
 
 // ============ STATE ============
-var audioCtx, analyser, freqData;
+var audioCtx, analyser, freqData, gainNode;
 var isRunning = false, isCalibrating = false;
 var dominantFreq = 0, amplitude = 0;
+var inputMode = 'voice'; // 'voice' or 'music'
+var envelope = 0; // Resolume-style: rises instant, falls at controlled rate
+var FALL_RATE = 0.92; // per frame: 0.9 = fast fall, 0.95 = slow fall, 0.92 = natural
 var noiseFloor = null, noiseGateRMS = 0;
-var currentMode = {m:0, n:1, alpha:2.4048};
-var lastModeKey = '0,1';
+var currentMode = {m:1, n:1, alpha:3.8317}; // start with (1,1) not (0,1)
+var lastModeKey = '1,1';
 var currentLUT = null;
 var particles = [];
 var currentNote = null;
@@ -149,13 +155,28 @@ var ZEROS=[
 ];
 
 var MODES=[];
-for(var m=0;m<=6;m++) for(var n=0;n<4;n++) MODES.push({m:m,n:n+1,alpha:ZEROS[m][n]});
+for(var m=0;m<=6;m++) for(var n=0;n<4;n++){
+  // Skip (0,1) — no internal nodal lines at all (only boundary)
+  if(m===0&&n===0) continue;
+  MODES.push({m:m,n:n+1,alpha:ZEROS[m][n]});
+}
 MODES.sort(function(a,b){return a.alpha-b.alpha});
 
 function Z2(m,alpha,r,th){
   var j=besselJ(m,alpha*r);
   var a=m===0?1:Math.cos(m*th);
   return j*a*j*a;
+}
+
+// Potential field: Z² + boundary repulsion
+// Boundary repulsion makes the edge HIGH energy so particles are pushed inward
+// Only internal nodal lines remain as minima
+function potential(m,alpha,r,th){
+  if(r>0.98) return 10;
+  var z2=Z2(m,alpha,r,th);
+  // Gentle boundary repulsion: only kicks in near the edge
+  var edge=r>0.85? 0.5*Math.pow((r-0.85)/0.13, 3) : 0;
+  return z2+edge;
 }
 
 // ============ GRADIENT LUT ============
@@ -166,14 +187,13 @@ function makeLUT(m,n,alpha){
     var px=ix/(GRID-1)*2-1, py=iy/(GRID-1)*2-1;
     var rr=Math.sqrt(px*px+py*py);
     var base=(iy*GRID+ix)*2;
-    if(rr>0.95){lut[base]=px/rr*0.5;lut[base+1]=py/rr*0.5;continue;}
-    if(rr<0.001) continue;
-    var xp=Math.min(1,Math.sqrt((px+eps)*(px+eps)+py*py));
-    var xm=Math.min(1,Math.sqrt((px-eps)*(px-eps)+py*py));
-    var yp=Math.min(1,Math.sqrt(px*px+(py+eps)*(py+eps)));
-    var ym=Math.min(1,Math.sqrt(px*px+(py-eps)*(py-eps)));
-    lut[base]  =(Z2(m,alpha,xp,Math.atan2(py,px+eps))-Z2(m,alpha,xm,Math.atan2(py,px-eps)))/(2*eps);
-    lut[base+1]=(Z2(m,alpha,yp,Math.atan2(py+eps,px))-Z2(m,alpha,ym,Math.atan2(py-eps,px)))/(2*eps);
+    if(rr>0.96||rr<0.001) continue;
+    // Use potential function (Z² + boundary repulsion) for gradient
+    var pxp=px+eps, pxm=px-eps, pyp=py+eps, pym=py-eps;
+    var rxp=Math.sqrt(pxp*pxp+py*py), rxm=Math.sqrt(pxm*pxm+py*py);
+    var ryp=Math.sqrt(px*px+pyp*pyp), rym=Math.sqrt(px*px+pym*pym);
+    lut[base]  =(potential(m,alpha,rxp,Math.atan2(py,pxp))-potential(m,alpha,rxm,Math.atan2(py,pxm)))/(2*eps);
+    lut[base+1]=(potential(m,alpha,ryp,Math.atan2(pyp,px))-potential(m,alpha,rym,Math.atan2(pym,px)))/(2*eps);
   }
   var mx=0;
   for(var i=0;i<GRID*GRID;i++){var g=lut[i*2],h=lut[i*2+1];var mg=Math.sqrt(g*g+h*h);if(mg>mx)mx=mg;}
@@ -192,7 +212,7 @@ function sampleLUT(lut,px,py){
   ];
 }
 
-currentLUT = makeLUT(0,1,ZEROS[0][0]);
+currentLUT = makeLUT(1,1,ZEROS[1][0]);
 
 // ============ PARTICLES ============
 function initParticles(count){
@@ -205,15 +225,42 @@ function initParticles(count){
 initParticles(15000);
 
 // ============ AUDIO ============
+// Populate input device dropdown
+async function listDevices(){
+  var sel=document.getElementById('inputDevice');
+  // Need a temp getUserMedia call first to get permission (labels are hidden until granted)
+  try{
+    var tmp=await navigator.mediaDevices.getUserMedia({audio:true});
+    tmp.getTracks().forEach(function(t){t.stop();});
+  }catch(e){return;}
+  var devices=await navigator.mediaDevices.enumerateDevices();
+  sel.innerHTML='<option value="">Default</option>';
+  devices.forEach(function(d){
+    if(d.kind==='audioinput'){
+      var opt=document.createElement('option');
+      opt.value=d.deviceId;
+      opt.textContent=d.label||('Mic '+d.deviceId.slice(0,8));
+      sel.appendChild(opt);
+    }
+  });
+}
+
 async function startAudio(){
   audioCtx=new(window.AudioContext||window.webkitAudioContext)();
-  var stream=await navigator.mediaDevices.getUserMedia({audio:true});
+  var deviceId=document.getElementById('inputDevice').value;
+  var constraints={audio: deviceId ? {deviceId:{exact:deviceId}} : true};
+  var stream=await navigator.mediaDevices.getUserMedia(constraints);
   var src=audioCtx.createMediaStreamSource(stream);
   var hp=audioCtx.createBiquadFilter();
   hp.type='highpass'; hp.frequency.value=80; hp.Q.value=0.7;
+  gainNode=audioCtx.createGain();
+  gainNode.gain.value=inputMode==='music'?0.07:1.0;
   analyser=audioCtx.createAnalyser();
-  analyser.fftSize=2048; analyser.smoothingTimeConstant=0.8;
-  src.connect(hp); hp.connect(analyser);
+  analyser.fftSize=2048;
+  analyser.smoothingTimeConstant=0.6; // less browser smoothing, we do our own
+  analyser.minDecibels=-90; analyser.maxDecibels=-10;
+  // Clean chain: src -> highpass -> gain -> analyser (no compression)
+  src.connect(hp); hp.connect(gainNode); gainNode.connect(analyser);
   freqData=new Uint8Array(analyser.frequencyBinCount);
 }
 
@@ -268,8 +315,25 @@ function readAudio(){
     if(noiseFloor&&freqData[i]>noiseFloor[i]*1.8) hot++;
   }
   var rms=Math.sqrt(sum/(cnt||1));
-  var gate=noiseFloor?noiseGateRMS*1.2:20;
-  amplitude=(rms<gate||mxV<20||hot<3)?0:rms/255*sens;
+
+  // Gate: voice uses calibrated noise floor, music uses simple threshold
+  var gated;
+  if(inputMode==='voice'){
+    var gate=noiseFloor?noiseGateRMS*1.2:20;
+    gated=(rms<gate||mxV<20||hot<3)?0:rms/255*sens;
+  } else {
+    gated=mxV>3?rms/255*sens:0;
+  }
+
+  // Resolume-style envelope: instant rise, controlled fall
+  if(gated>envelope){
+    envelope=gated; // instant attack
+  } else {
+    envelope*=FALL_RATE; // smooth decay
+  }
+  // Kill tiny residual
+  if(envelope<0.001) envelope=0;
+  amplitude=envelope;
 
   // Pitch detection with smoothing
   if(amplitude>0 && dominantFreq>60){
@@ -300,31 +364,62 @@ function updateMode(){
 }
 
 // ============ SAND PHYSICS ============
+// ============ SESSION LOGGING ============
+var logTimer=0, logSamples=0;
+var logAmpSum=0, logRadSum=0, logEdgeCount=0;
+
+function logSession(){
+  if(logSamples===0) return;
+  var avgAmp=(logAmpSum/logSamples).toFixed(4);
+  var avgRad=(logRadSum/logSamples).toFixed(3);
+  var edgePct=(logEdgeCount/logSamples*100).toFixed(1);
+  console.log(
+    '[CYMATICS] mode=('+currentMode.m+','+currentMode.n+') '+
+    'amp='+avgAmp+' avgR='+avgRad+' edge%='+edgePct+'% '+
+    'input='+inputMode+' freq='+Math.round(dominantFreq)+'Hz '+
+    'particles='+particles.length
+  );
+  logAmpSum=0; logRadSum=0; logEdgeCount=0; logSamples=0;
+}
+
+// ============ PHYSICS ============
 function stepSand(dt){
-  var fs=Math.min(amplitude,1)*0.15;
-  var fric=Math.pow(0.05,dt);
+  // Voice: light sand, lower force, fine detail
+  // Music: heavy particles, stronger force (higher pressure), more inertia
+  var isMusic=inputMode==='music';
+  var fs=Math.min(amplitude,1)*(isMusic?0.25:0.15);
+  var fric=Math.pow(isMusic?0.12:0.05, dt); // music: less friction = more inertia
   var noise=amplitude>0.05?0.001*amplitude:0.0001;
+  var maxSpd=isMusic?0.015:0.02; // music: slower max = heavier feel
+
+  var radSum=0, edgeN=0;
+
   for(var i=0;i<particles.length;i++){
     var p=particles[i];
     if(fs>0.001){var g=sampleLUT(currentLUT,p.x,p.y);p.vx-=g[0]*fs;p.vy-=g[1]*fs;}
     p.vx+=(Math.random()-0.5)*noise;
     p.vy+=(Math.random()-0.5)*noise;
     var sp=Math.sqrt(p.vx*p.vx+p.vy*p.vy);
-    if(sp>0.02){p.vx=p.vx/sp*0.02;p.vy=p.vy/sp*0.02;}
+    if(sp>maxSpd){p.vx=p.vx/sp*maxSpd;p.vy=p.vy/sp*maxSpd;}
     p.vx*=fric; p.vy*=fric;
     p.x+=p.vx*dt*60; p.y+=p.vy*dt*60;
+
+    // Soft wall — gradient repulsion handles most of it, hard clamp as safety
     var r=Math.sqrt(p.x*p.x+p.y*p.y);
-    if(r>0.92){
-      var pb=(r-0.92)/0.08;
-      p.vx+=-p.x/r*pb*0.01; p.vy+=-p.y/r*pb*0.01;
-      if(r>0.97){
-        p.x=p.x/r*0.97; p.y=p.y/r*0.97;
-        var dot=p.vx*p.x/r+p.vy*p.y/r;
-        if(dot>0){p.vx-=2*dot*p.x/r;p.vy-=2*dot*p.y/r;}
-        p.vx*=0.5;p.vy*=0.5;
-      }
+    if(r>0.96){
+      p.x=p.x/r*0.95; p.y=p.y/r*0.95;
+      p.vx*=-0.2; p.vy*=-0.2;
     }
+
+    // Logging stats (sample every 4th particle for perf)
+    if((i&3)===0){radSum+=r;if(r>0.85)edgeN++;}
   }
+
+  // Accumulate log data
+  logAmpSum+=amplitude;
+  logRadSum+=radSum/(particles.length>>2);
+  logEdgeCount+=edgeN/(particles.length>>2);
+  logSamples++;
 }
 
 // ============ RENDER ============
@@ -338,10 +433,11 @@ function draw(){
 
   // Particles
   ctx.globalAlpha=0.9;
+  var pSize=inputMode==='music'?3.5:2.5; // bigger grains for music
   for(var i=0;i<particles.length;i++){
     var p=particles[i];
     ctx.fillStyle=p.c?'#4a9ed6':'#e8863a';
-    ctx.fillRect(CX+p.x*R-1, CY+p.y*R-1, 2.5, 2.5);
+    ctx.fillRect(CX+p.x*R-pSize/2, CY+p.y*R-pSize/2, pSize, pSize);
   }
   ctx.globalAlpha=1;
 }
@@ -401,7 +497,7 @@ function loop(t){
   requestAnimationFrame(loop);
   var dt=Math.min(0.033,(t-lastT)/1000); lastT=t;
   fc++; ft+=dt;
-  if(ft>=1){fps=Math.round(fc/ft);fc=0;ft=0;}
+  if(ft>=1){fps=Math.round(fc/ft);fc=0;ft=0; logSession();}
 
   if(isRunning){readAudio();updateMode();}
   stepSand(dt);
@@ -417,12 +513,34 @@ requestAnimationFrame(loop);
 // ============ UI ============
 document.getElementById('btnStart').onclick=async function(){
   if(!isRunning&&!isCalibrating){
-    try{await startAudio();await calibrate();isRunning=true;}
-    catch(e){alert('Mic: '+e.message);}
+    try{
+      await startAudio();
+      if(inputMode==='voice') await calibrate();
+      else{
+        // Music mode: skip calibration, just go
+        document.getElementById('btnStart').textContent='Stop';
+        document.getElementById('btnStart').classList.add('active');
+      }
+      isRunning=true;
+    }catch(e){alert('Mic: '+e.message);}
   } else if(isRunning){
     isRunning=false;amplitude=0;noiseFloor=null;currentNote=null;
-    this.textContent='Start Mic';this.classList.remove('active');
+    this.textContent='Start';this.classList.remove('active');
   }
+};
+
+document.getElementById('btnMode').onclick=function(){
+  if(inputMode==='voice'){
+    inputMode='music';
+    this.textContent='Music';
+    this.classList.add('active');
+  } else {
+    inputMode='voice';
+    this.textContent='Voice';
+    this.classList.remove('active');
+  }
+  // Update gain if already running
+  if(gainNode) gainNode.gain.value=inputMode==='music'?0.07:1.0;
 };
 
 document.getElementById('btnReset').onclick=function(){
@@ -434,6 +552,11 @@ document.getElementById('slCount').oninput=function(){
 };
 
 window.onresize=resize;
+
+// List audio devices on load (will ask for mic permission to get labels)
+listDevices();
+// Re-list when devices change (plug/unplug)
+navigator.mediaDevices.addEventListener('devicechange', listDevices);
 
 })();
 </script>
