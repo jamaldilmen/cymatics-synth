@@ -50,7 +50,7 @@ button.active{background:#4a6fa5;border-color:#6a8fc5}
   <button id="btnReset">Reset</button>
   <button id="btnCam">Reset Cam</button>
   <button id="btnWave">Sine</button>
-  <div class="sg"><label>Particles</label><input type="range" id="slCount" min="3000" max="30000" step="1000" value="18000"></div>
+  <div class="sg"><label>Particles</label><input type="range" id="slCount" min="3000" max="60000" step="1000" value="30000"></div>
   <div class="sg"><label>Attack</label><input type="range" id="slAttack" min="5" max="500" step="5" value="20"></div>
   <div class="sg"><label>Release</label><input type="range" id="slRelease" min="50" max="2000" step="50" value="400"></div>
   <div class="sg"><label>Depth Mode</label><input type="range" id="slModeP" min="1" max="4" step="1" value="1"></div>
@@ -63,7 +63,7 @@ button.active{background:#4a6fa5;border-color:#6a8fc5}
 "use strict";
 
 var IS_MOBILE = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-var MAX_P = IS_MOBILE ? 10000 : 30000;
+var MAX_P = IS_MOBILE ? 10000 : 60000;
 var GRID = 128;
 var NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 
@@ -163,7 +163,7 @@ var instancedSand, dummy = new THREE.Object3D();
 function initParticles(count){
   particles = [];
   if(instancedSand){ scene.remove(instancedSand); instancedSand.dispose(); }
-  var geom = new THREE.SphereGeometry(1.2, 6, 6);
+  var geom = new THREE.SphereGeometry(0.8, 16, 12);
   var mat = new THREE.MeshStandardMaterial({roughness:0.8, metalness:0.2});
   instancedSand = new THREE.InstancedMesh(geom, mat, count);
   var co = new THREE.Color();
@@ -178,7 +178,7 @@ function initParticles(count){
   instancedSand.instanceColor.needsUpdate = true;
   scene.add(instancedSand);
 }
-initParticles(18000);
+initParticles(30000);
 
 // ============ BESSEL MATH ============
 function besselJ(n, x){
