@@ -81,7 +81,6 @@ var lastModeKey = '1,1';
 var currentLUT = null;
 var particles = [];
 var simTime = 0;
-var maxDensityObserved = 1;
 var lastNoteFreq = 0; // most recent note drives the mode
 var modeP = 1; // vertical mode number (1-4)
 
@@ -155,80 +154,6 @@ scene.add(new THREE.HemisphereLight(0xffffff, 0x666688, 0.8));
 var dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
 dirLight.position.set(100,200,50);
 scene.add(dirLight);
-
-// ============ HEATMAP SETUP ============
-var HEAT_GRID = 64;
-var heatCanvas = document.createElement('canvas');
-heatCanvas.width = heatCanvas.height = HEAT_GRID;
-var heatCtx = heatCanvas.getContext('2d');
-var heatTexture = new THREE.CanvasTexture(heatCanvas);
-var heatGrid = new Float32Array(HEAT_GRID * HEAT_GRID);
-var heatBlur = new Float32Array(HEAT_GRID * HEAT_GRID);
-
-var heatGeom = new THREE.CircleGeometry(R, 64);
-var heatMat = new THREE.MeshBasicMaterial({
-  map: heatTexture,
-  transparent: true,
-  blending: THREE.AdditiveBlending,
-  side: THREE.DoubleSide,
-  depthWrite: false,
-  opacity: 0.5
-});
-var heatDisc = new THREE.Mesh(heatGeom, heatMat);
-heatDisc.rotation.x = -Math.PI / 2;
-heatDisc.position.y = -1;
-scene.add(heatDisc);
-
-function updateHeatmap() {
-  heatGrid.fill(0);
-  for (var i = 0; i < particles.length; i++) {
-    var p = particles[i];
-    var gx = Math.floor(((p.x + 1) / 2) * (HEAT_GRID - 1));
-    var gy = Math.floor(((p.y + 1) / 2) * (HEAT_GRID - 1));
-    if (gx >= 0 && gx < HEAT_GRID && gy >= 0 && gy < HEAT_GRID) {
-      heatGrid[gy * HEAT_GRID + gx]++;
-    }
-  }
-
-  // Blur for smooth appearance
-  var radius = 2;
-  for (var y = 0; y < HEAT_GRID; y++) {
-    for (var x = 0; x < HEAT_GRID; x++) {
-      var sum = 0, count = 0;
-      for (var dx = -radius; dx <= radius; dx++) {
-        var nx = x + dx; if (nx >= 0 && nx < HEAT_GRID) { sum += heatGrid[y * HEAT_GRID + nx]; count++; }
-      }
-      heatBlur[y * HEAT_GRID + x] = sum / count;
-    }
-  }
-  for (var x = 0; x < HEAT_GRID; x++) {
-    for (var y = 0; y < HEAT_GRID; y++) {
-      var sum = 0, count = 0;
-      for (var dy = -radius; dy <= radius; dy++) {
-        var ny = y + dy; if (ny >= 0 && ny < HEAT_GRID) { sum += heatBlur[ny * HEAT_GRID + x]; count++; }
-      }
-      heatGrid[y * HEAT_GRID + x] = sum / count;
-    }
-  }
-
-  maxDensityObserved = 0;
-  for (var i = 0; i < HEAT_GRID * HEAT_GRID; i++) if (heatGrid[i] > maxDensityObserved) maxDensityObserved = heatGrid[i];
-
-  var imgData = heatCtx.createImageData(HEAT_GRID, HEAT_GRID);
-  var data = imgData.data;
-  var color = new THREE.Color().setHSL(currentPalette.h1 / 360, 0.8, 0.5);
-
-  for (var i = 0; i < HEAT_GRID * HEAT_GRID; i++) {
-    var d = maxDensityObserved > 0 ? heatGrid[i] / maxDensityObserved : 0;
-    var idx = i * 4;
-    data[idx] = color.r * 255;
-    data[idx + 1] = color.g * 255;
-    data[idx + 2] = color.b * 255;
-    data[idx + 3] = d * 255 * Math.min(1, amplitude * 3);
-  }
-  heatCtx.putImageData(imgData, 0, 0);
-  heatTexture.needsUpdate = true;
-}
 
 // ============ INSTANCED MESH ============
 var instancedSand, dummy = new THREE.Object3D();
@@ -592,7 +517,6 @@ function loop(t){
   var dt=Math.min(0.033,(t-lastT)/1000); lastT=t;
   fc++; ft+=dt; if(ft>=1){fps=Math.round(fc/ft);fc=0;ft=0;}
   updateEnvelope(dt);
-  updateHeatmap(); // Update before stepSand so particles can react to density
   stepSand(dt);
   controls.update();
   renderer.render(scene, camera);
