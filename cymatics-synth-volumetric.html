@@ -508,46 +508,59 @@ buildPiano();
 function stepSand(dt){
   var fs = Math.min(amplitude, 1) * 0.18;
   var fric = Math.pow(0.06, dt);
-  var maxSpd = 0.015;
+  var m = currentMode.m;
+  var alpha = currentMode.alpha;
+  var k = modeP * Math.PI / MAX_WAVE_DEPTH;
 
   for(var i=0; i<particles.length; i++){
     var p = particles[i];
     var r = Math.sqrt(p.x*p.x+p.y*p.y);
     var th = Math.atan2(p.y, p.x);
-    var h = waveHeight(currentMode.m, currentMode.alpha, r, th);
-
-    // Get density from heatGrid for 3D piling
-    var gx = Math.floor(((p.x + 1) / 2) * (HEAT_GRID - 1));
-    var gy = Math.floor(((p.y + 1) / 2) * (HEAT_GRID - 1));
-    var densityVal = 0;
-    if (gx >= 0 && gx < HEAT_GRID && gy >= 0 && gy < HEAT_GRID) {
-      densityVal = heatGrid[gy * HEAT_GRID + gx] / (maxDensityObserved || 1);
-    }
+    var kz = k * p.z;
 
     if(fs > 0.001){
-      var g = sampleLUT(currentLUT, p.x, p.y);
+      // Bessel value at this radius
+      var jm = besselJ(m, alpha * r);
 
-      // Z standing wave physics
-      var zNorm = p.z / MAX_WAVE_DEPTH;
-      var zWave = Math.cos(modeP * Math.PI * zNorm);
-      // Gradient of cos²(pπz) pushes particles toward Z nodal planes
-      var zForce = -Math.sin(2 * modeP * Math.PI * zNorm) * modeP * Math.PI;
-      p.vz += zForce * fs * 0.002;
+      // 3D wave: J_m(αr) * cos(mθ - kz) — helical nodal surfaces
+      var phase = m * th - kz;
+      var h3d = jm * Math.cos(phase);
 
-      // XY force modulated by Z wave — full force at Z nodal planes, reduced at antinodes
-      var zModulation = 1.0 - Math.abs(zWave) * 0.5;
-      p.vx -= g[0] * fs * zModulation;
-      p.vy -= g[1] * fs * zModulation;
+      // === XY FORCE: ∇xy of [J_m * cos(mθ - kz)]² ===
+      // Rotate sample point by kz/m so existing LUT gives helical gradient
+      var gx, gy;
+      if(m > 0) {
+        var phi = kz / m;
+        var cphi = Math.cos(phi), sphi = Math.sin(phi);
+        var rx = p.x * cphi + p.y * sphi;
+        var ry = -p.x * sphi + p.y * cphi;
+        var gr = sampleLUT(currentLUT, rx, ry);
+        gx = gr[0] * cphi - gr[1] * sphi;
+        gy = gr[0] * sphi + gr[1] * cphi;
+      } else {
+        var gr = sampleLUT(currentLUT, p.x, p.y);
+        gx = gr[0]; gy = gr[1];
+      }
+      p.vx -= gx * fs;
+      p.vy -= gy * fs;
 
-      // Settling: only jitter when still moving
-      var gradMag = Math.sqrt(g[0]*g[0] + g[1]*g[1]);
+      // === Z FORCE: ∂/∂z [J_m * cos(mθ - kz)]² ===
+      // = k * J_m² * sin(2*(mθ - kz))
+      // For m>0 at z=0: sin(2mθ) ≠ 0 — no dead zone!
+      var zGrad = k * jm * jm * Math.sin(2 * phase);
+      // m=0 dead zone nudge (sin(0)=0 when z=0)
+      if(m === 0 && Math.abs(p.z) < 2) zGrad += (Math.random() - 0.5) * jm * jm * k;
+      p.vz -= zGrad * fs * 200;
+
+      // Settling
+      var gradMag = Math.sqrt(gx*gx + gy*gy);
       var velMag = Math.sqrt(p.vx*p.vx + p.vy*p.vy + p.vz*p.vz);
-      var jitter = Math.abs(h) * amplitude;
+      var jitter3d = Math.abs(h3d) * amplitude;
       if(gradMag < 0.1 && velMag < 0.001) {
         // Settled
-      } else if(jitter > 0.01){
-        p.vx += (Math.random()-0.5) * jitter * 5 * dt;
-        p.vy += (Math.random()-0.5) * jitter * 5 * dt;
+      } else if(jitter3d > 0.01){
+        p.vx += (Math.random()-0.5) * jitter3d * 5 * dt;
+        p.vy += (Math.random()-0.5) * jitter3d * 5 * dt;
       }
     } else {
       // No amplitude — spring particles back to z=0
