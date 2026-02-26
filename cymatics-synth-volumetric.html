@@ -547,6 +547,21 @@ document.getElementById('btnWave').onclick=function(){
   waveIdx=(waveIdx+1)%WAVEFORMS.length; waveformType=WAVEFORMS[waveIdx];
   this.textContent=waveformType.charAt(0).toUpperCase()+waveformType.slice(1);
 };
+
+// ============ WEB MIDI ============
+if(navigator.requestMIDIAccess){
+  navigator.requestMIDIAccess().then(function(midi){
+    function onMessage(e){
+      var cmd = e.data[0] & 0xf0;
+      var note = e.data[1];
+      var vel = e.data[2] / 127;
+      if(cmd === 0x90 && vel > 0) noteOn(note, vel);
+      else if(cmd === 0x80 || (cmd === 0x90 && vel === 0)) noteOff(note);
+    }
+    midi.inputs.forEach(function(input){ input.onmidimessage = onMessage; });
+    midi.onstatechange = function(){ midi.inputs.forEach(function(input){ input.onmidimessage = onMessage; }); };
+  });
+}
 window.addEventListener('resize', function(){ var a=innerWidth/innerHeight; camera.left=-frustum*a; camera.right=frustum*a; camera.top=frustum; camera.bottom=-frustum; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
 document.getElementById('toggleUI').onclick=function(){ document.body.classList.toggle('ui-hidden'); };
 
