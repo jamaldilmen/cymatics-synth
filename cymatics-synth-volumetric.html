@@ -349,13 +349,26 @@ function updateEnvelope(dt){
 }
 
 function updateModeFromFreq(freq){
-  var t = freq<80 ? 0 : Math.min(1, (freq-80)/(2000-80));
-  var idx = Math.min(MODES.length-1, t*MODES.length|0);
-  var mode = MODES[idx];
-  var key = mode.m+','+mode.n;
-  if(key!==lastModeKey){
-    lastModeKey = key; currentMode = mode;
-    currentLUT = makeLUT(mode.m, mode.n, mode.alpha);
+  // m from pitch class: each semitone gets unique angular symmetry
+  var midi = 69 + 12 * Math.log2(freq / 440);
+  var semitone = ((Math.round(midi) % 12) + 12) % 12;
+  var m = semitone % 7;
+
+  // Continuous alpha from frequency (physical: alpha ∝ sqrt(freq))
+  var alpha = 2.4 * Math.sqrt(freq / 80);
+  alpha = Math.max(2.4, Math.min(20, alpha));
+
+  // Find nearest n for display label
+  var bestN = 1;
+  for(var ni = 0; ni < ZEROS[m].length; ni++){
+    if(Math.abs(ZEROS[m][ni] - alpha) < Math.abs(ZEROS[m][bestN-1] - alpha)) bestN = ni + 1;
+  }
+
+  var key = m + ',' + alpha.toFixed(2);
+  if(key !== lastModeKey){
+    lastModeKey = key;
+    currentMode = {m: m, n: bestN, alpha: alpha};
+    currentLUT = makeLUT(m, bestN, alpha);
   }
 }
 
