@@ -132,7 +132,13 @@ var R = W/2 - 10;
 var MAX_WAVE_DEPTH = R * 0.35;
 
 var scene = new THREE.Scene();
-var camera = new THREE.PerspectiveCamera(40, innerWidth/innerHeight, 0.1, 3000);
+var frustum = W * 0.7;
+var aspect = innerWidth / innerHeight;
+var camera = new THREE.OrthographicCamera(
+  -frustum * aspect, frustum * aspect,
+  frustum, -frustum,
+  0.1, 3000
+);
 camera.position.set(0, W, W*0.5);
 camera.lookAt(0,0,0);
 
@@ -541,7 +547,7 @@ document.getElementById('btnWave').onclick=function(){
   waveIdx=(waveIdx+1)%WAVEFORMS.length; waveformType=WAVEFORMS[waveIdx];
   this.textContent=waveformType.charAt(0).toUpperCase()+waveformType.slice(1);
 };
-window.addEventListener('resize', function(){ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
+window.addEventListener('resize', function(){ var a=innerWidth/innerHeight; camera.left=-frustum*a; camera.right=frustum*a; camera.top=frustum; camera.bottom=-frustum; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
 document.getElementById('toggleUI').onclick=function(){ document.body.classList.toggle('ui-hidden'); };
 
 })();
