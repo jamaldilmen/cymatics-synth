@@ -76,12 +76,8 @@ var waveformType = 'sine';
 var WAVEFORMS = ['sine','triangle','sawtooth','square'];
 var waveIdx = 0;
 var adsrSustain = 0.7, adsrDecay = 0.1;
-var currentMode = {m:1, n:1, alpha:3.8317};
-var lastModeKey = '1,1';
-var currentLUT = null;
 var particles = [];
 var simTime = 0;
-var lastNoteFreq = 0; // most recent note drives the mode
 var modeP = 1; // vertical mode number (1-4)
 
 // ============ COLOR PALETTES ============
@@ -160,7 +156,7 @@ var instancedSand, dummy = new THREE.Object3D();
 
 function initParticles(count){
   particles = [];
-  if(instancedSand) scene.remove(instancedSand);
+  if(instancedSand){ scene.remove(instancedSand); instancedSand.dispose(); }
   var geom = new THREE.SphereGeometry(1.2, 6, 6);
   var mat = new THREE.MeshStandardMaterial({roughness:0.8, metalness:0.2});
   instancedSand = new THREE.InstancedMesh(geom, mat, count);
@@ -247,7 +243,6 @@ function sampleLUT(lut,px,py){
   ];
 }
 
-currentLUT = makeLUT(1,1,ZEROS[1][0]);
 
 // ============ AUDIO SYNTH ============
 function ensureAudio(){
@@ -285,9 +280,8 @@ function noteOn(midi, vel){
   gainNode.gain.setValueAtTime(0, now);
   gainNode.gain.linearRampToValueAtTime(vel, now+atk);
   gainNode.gain.linearRampToValueAtTime(vel*adsrSustain, now+atk+adsrDecay);
-  voices[midi] = {osc:osc, gain:gainNode, envPhase:'attack', envTime:0, envStart:0, targetAmp:vel, amplitude:0, freq:freq};
-  lastNoteFreq = freq;
-  updateModeFromFreq(freq);
+  var mode = modeForFreq(freq);
+  voices[midi] = {osc:osc, gain:gainNode, envPhase:'attack', envTime:0, envStart:0, targetAmp:vel, amplitude:0, freq:freq, mode:mode};
   updateNoteDisplay();
   highlightKey(midi, true);
 }
@@ -348,28 +342,17 @@ function updateEnvelope(dt){
   if(deadVoices.length>0) updateNoteDisplay();
 }
 
-function updateModeFromFreq(freq){
-  // m from pitch class: each semitone gets unique angular symmetry
+function modeForFreq(freq){
   var midi = 69 + 12 * Math.log2(freq / 440);
   var semitone = ((Math.round(midi) % 12) + 12) % 12;
   var m = semitone % 7;
-
-  // Continuous alpha from frequency (physical: alpha ∝ sqrt(freq))
   var alpha = 2.4 * Math.sqrt(freq / 80);
   alpha = Math.max(2.4, Math.min(20, alpha));
-
-  // Find nearest n for display label
   var bestN = 1;
   for(var ni = 0; ni < ZEROS[m].length; ni++){
     if(Math.abs(ZEROS[m][ni] - alpha) < Math.abs(ZEROS[m][bestN-1] - alpha)) bestN = ni + 1;
   }
-
-  var key = m + ',' + alpha.toFixed(2);
-  if(key !== lastModeKey){
-    lastModeKey = key;
-    currentMode = {m: m, n: bestN, alpha: alpha};
-    currentLUT = makeLUT(m, bestN, alpha);
-  }
+  return {m: m, n: bestN, alpha: alpha, lut: makeLUT(m, bestN, alpha)};
 }
 
 var KEY_MAP = {'KeyA':0,'KeyW':1,'KeyS':2,'KeyE':3,'KeyD':4,'KeyF':5,'KeyT':6,'KeyG':7,'KeyY':8,'KeyH':9,'KeyU':10,'KeyJ':11,'KeyK':12,'KeyO':13,'KeyL':14,'KeyP':15,'Semicolon':16};
@@ -444,11 +427,16 @@ buildPiano();
 
 // ============ VOLUMETRIC PARTICLE PHYSICS ============
 function stepSand(dt){
-  var fs = Math.min(amplitude, 1) * 0.18;
   var fric = Math.pow(0.06, dt);
-  var m = currentMode.m;
-  var alpha = currentMode.alpha;
   var k = modeP * Math.PI / MAX_WAVE_DEPTH;
+
+  // Collect active voices with amplitude
+  var activeVoices = [];
+  for(var midi in voices){
+    var v = voices[midi];
+    if(v.amplitude > 0.001 && v.mode) activeVoices.push(v);
+  }
+  var hasVoices = activeVoices.length > 0;
 
   for(var i=0; i<particles.length; i++){
     var p = particles[i];
@@ -456,52 +444,57 @@ function stepSand(dt){
     var th = Math.atan2(p.y, p.x);
     var kz = k * p.z;
 
-    if(fs > 0.001){
-      // Bessel value at this radius
-      var jm = besselJ(m, alpha * r);
+    if(hasVoices){
+      var fxTotal = 0, fyTotal = 0, fzTotal = 0, jitterTotal = 0;
 
-      // 3D wave: J_m(αr) * cos(mθ - kz) — helical nodal surfaces
-      var phase = m * th - kz;
-      var h3d = jm * Math.cos(phase);
+      for(var vi=0; vi<activeVoices.length; vi++){
+        var v = activeVoices[vi];
+        var m = v.mode.m, alpha = v.mode.alpha, lut = v.mode.lut;
+        var w = Math.min(v.amplitude, 1) * 0.18;
 
-      // === XY FORCE: ∇xy of [J_m * cos(mθ - kz)]² ===
-      // Rotate sample point by kz/m so existing LUT gives helical gradient
-      var gx, gy;
-      if(m > 0) {
-        var phi = kz / m;
-        var cphi = Math.cos(phi), sphi = Math.sin(phi);
-        var rx = p.x * cphi + p.y * sphi;
-        var ry = -p.x * sphi + p.y * cphi;
-        var gr = sampleLUT(currentLUT, rx, ry);
-        gx = gr[0] * cphi - gr[1] * sphi;
-        gy = gr[0] * sphi + gr[1] * cphi;
-      } else {
-        var gr = sampleLUT(currentLUT, p.x, p.y);
-        gx = gr[0]; gy = gr[1];
+        var jm = besselJ(m, alpha * r);
+        var phase = m * th - kz;
+        var h3d = jm * Math.cos(phase);
+
+        // XY force from this voice's LUT
+        var gx, gy;
+        if(m > 0) {
+          var phi = kz / m;
+          var cphi = Math.cos(phi), sphi = Math.sin(phi);
+          var rx = p.x * cphi + p.y * sphi;
+          var ry = -p.x * sphi + p.y * cphi;
+          var gr = sampleLUT(lut, rx, ry);
+          gx = gr[0] * cphi - gr[1] * sphi;
+          gy = gr[0] * sphi + gr[1] * cphi;
+        } else {
+          var gr = sampleLUT(lut, p.x, p.y);
+          gx = gr[0]; gy = gr[1];
+        }
+        fxTotal -= gx * w;
+        fyTotal -= gy * w;
+
+        // Z force from this voice
+        var zGrad = k * jm * jm * Math.sin(2 * phase);
+        if(m === 0 && Math.abs(p.z) < 2) zGrad += (Math.random() - 0.5) * jm * jm * k;
+        fzTotal -= zGrad * w * 200;
+
+        jitterTotal += Math.abs(h3d) * v.amplitude;
       }
-      p.vx -= gx * fs;
-      p.vy -= gy * fs;
 
-      // === Z FORCE: ∂/∂z [J_m * cos(mθ - kz)]² ===
-      // = k * J_m² * sin(2*(mθ - kz))
-      // For m>0 at z=0: sin(2mθ) ≠ 0 — no dead zone!
-      var zGrad = k * jm * jm * Math.sin(2 * phase);
-      // m=0 dead zone nudge (sin(0)=0 when z=0)
-      if(m === 0 && Math.abs(p.z) < 2) zGrad += (Math.random() - 0.5) * jm * jm * k;
-      p.vz -= zGrad * fs * 200;
+      p.vx += fxTotal;
+      p.vy += fyTotal;
+      p.vz += fzTotal;
 
-      // Settling
-      var gradMag = Math.sqrt(gx*gx + gy*gy);
-      var velMag = Math.sqrt(p.vx*p.vx + p.vy*p.vy + p.vz*p.vz);
-      var jitter3d = Math.abs(h3d) * amplitude;
-      if(gradMag < 0.1 && velMag < 0.001) {
-        // Settled
-      } else if(jitter3d > 0.01){
-        p.vx += (Math.random()-0.5) * jitter3d * 5 * dt;
-        p.vy += (Math.random()-0.5) * jitter3d * 5 * dt;
+      // Jitter
+      if(jitterTotal > 0.01){
+        var velMag = Math.sqrt(p.vx*p.vx + p.vy*p.vy + p.vz*p.vz);
+        if(velMag > 0.001){
+          p.vx += (Math.random()-0.5) * jitterTotal * 5 * dt;
+          p.vy += (Math.random()-0.5) * jitterTotal * 5 * dt;
+        }
       }
     } else {
-      // No amplitude — spring particles back to z=0
+      // No voices — spring particles back to z=0
       p.vz -= p.z * 0.05;
     }
 
@@ -510,7 +503,6 @@ function stepSand(dt){
 
     if(Math.sqrt(p.x*p.x+p.y*p.y)>0.96){ var rN=Math.sqrt(p.x*p.x+p.y*p.y); p.x=p.x/rN*0.95; p.y=p.y/rN*0.95; p.vx*=-0.3; p.vy*=-0.3; }
 
-    // Z boundary clamping
     if(Math.abs(p.z) > MAX_WAVE_DEPTH) {
       p.z = Math.sign(p.z) * MAX_WAVE_DEPTH * 0.95;
       p.vz *= -0.3;
@@ -533,13 +525,16 @@ function loop(t){
   stepSand(dt);
   controls.update();
   renderer.render(scene, camera);
-  document.getElementById('dMode').textContent='Mode ('+currentMode.m+','+currentMode.n+')';
+  var modeStrs = [];
+  for(var midi in voices){ var v=voices[midi]; if(v.amplitude>0.001&&v.mode) modeStrs.push('('+v.mode.m+','+v.mode.n+')'); }
+  document.getElementById('dMode').textContent='Mode '+(modeStrs.length?modeStrs.join('+'):'--');
   document.getElementById('dCount').textContent=particles.length+' particles';
   document.getElementById('dFps').textContent=fps+' fps';
 }
 requestAnimationFrame(loop);
 
 document.getElementById('btnReset').onclick=function(){ initParticles(Math.min(parseInt(document.getElementById('slCount').value),MAX_P)); };
+document.getElementById('slCount').oninput=function(){ initParticles(Math.min(parseInt(this.value),MAX_P)); };
 document.getElementById('slModeP').oninput=function(){ modeP = parseInt(this.value); };
 document.getElementById('btnCam').onclick=function(){ camera.position.set(0,W,W*0.5); camera.lookAt(0,0,0); controls.update(); };
 document.getElementById('btnWave').onclick=function(){
